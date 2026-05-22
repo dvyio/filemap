@@ -32,6 +32,8 @@ git push origin v0.1.0
 3. Create a GitHub release for that tag.
 4. Wait for the `Publish to npm` job to pass.
 
+If the version already exists on npm, the release job skips `npm publish`. This keeps the first release safe when the package was published manually before trusted publishing was ready.
+
 Do not use local `npm publish` as the normal release path. The package sets `publishConfig.provenance` to `true`, and the GitHub Actions publish job has `id-token: write` so npm can attach provenance to the package.
 
 Before the first release, enable npm trusted publishing for this GitHub repository in the npm package settings. If npm requires the package to exist first, publish the first version with a short-lived token or manual 2FA, then switch to trusted publishing right away.
