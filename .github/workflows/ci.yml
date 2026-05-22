@@ -109,5 +109,19 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      - name: Read package version
+        id: package
+        run: node -e "const fs = require('node:fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); console.log('version=' + pkg.version)" >> "$GITHUB_OUTPUT"
+
+      - name: Check npm version
+        id: npm-version
+        run: |
+          if npm view "@dvyio/filemap@${{ steps.package.outputs.version }}" version > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish package
+        if: steps.npm-version.outputs.exists == 'false'
         run: npm publish --access public
