@@ -20,7 +20,7 @@ filemap is read-only. It prints to stdout, so humans, scripts, and coding agents
 
 ## Compatibility
 
-filemap supports Node.js 20 and newer. The built CLI avoids JSON import attributes at startup, so `filemap --version` works across the full engine range.
+filemap supports Node.js 20 and newer. The built CLI avoids JSON import attributes at startup, so `npx @dvyio/filemap --version` works across the full engine range.
 
 Use Node.js 20.19 or newer when you build this repo or work on filemap locally. Some development tools need that newer Node 20 patch version.
 
@@ -127,9 +127,9 @@ Add this small note to agent instructions when you want agents to discover the t
 
 This repo uses filemap for live file-purpose lookup.
 
-- Run `npx @dvyio/filemap` for the full map.
-- Run `npx @dvyio/filemap path/to/subtree` for a scoped map.
-- Run `npx @dvyio/filemap --strict > /dev/null` to check coverage.
+- Run `npx -y @dvyio/filemap` for the full map.
+- Run `npx -y @dvyio/filemap path/to/subtree` for a scoped map.
+- Run `npx -y @dvyio/filemap --strict > /dev/null` to check coverage.
 ```
 
 ## Repeatable Commands
@@ -139,8 +139,8 @@ Put common commands in package scripts or agent instructions:
 ```json
 {
   "scripts": {
-    "filemap": "filemap --depth 2",
-    "filemap:strict": "filemap --strict > /dev/null"
+    "filemap": "npx -y @dvyio/filemap --depth 2",
+    "filemap:strict": "npx -y @dvyio/filemap --strict > /dev/null"
   }
 }
 ```
