@@ -102,6 +102,23 @@ describe('package exports', () => {
     expect(getPackedFilePaths(packResult)).toEqual(EXPECTED_PACKED_FILES);
   });
 
+  test('given npm prints lifecycle output before pack JSON, when parsing pack output, then the package entry is still read', () => {
+    const packResult = parseNpmPackJson(
+      [
+        'HUSKY=0 skip install',
+        JSON.stringify([
+          {
+            filename: 'dvyio-filemap-0.1.0.tgz',
+            files: [{ path: 'dist/cli.js' }],
+          },
+        ]),
+      ].join('\n'),
+    );
+
+    expect(packResult.filename).toBe('dvyio-filemap-0.1.0.tgz');
+    expect(getPackedFilePaths(packResult)).toEqual(['dist/cli.js']);
+  });
+
   test('given the packed package is installed, when a user runs it, then the CLI and exports work', async () => {
     await withWorkspace('filemap-pack-', async (cwd) => {
       const packDirectory = join(cwd, 'pack');
@@ -205,7 +222,9 @@ function runNpmPack(packDestination: string): NpmPackResult {
 }
 
 function parseNpmPackJson(stdout: string): NpmPackResult {
-  const parsed: unknown = JSON.parse(stdout);
+  const parsed: unknown = JSON.parse(
+    stdout.slice(findNpmPackJsonStart(stdout)),
+  );
 
   if (!Array.isArray(parsed) || parsed.length !== 1) {
     throw new Error(
@@ -229,6 +248,22 @@ function parseNpmPackJson(stdout: string): NpmPackResult {
     filename: packageEntry['filename'],
     files: packageEntry['files'].map(readNpmPackFile),
   };
+}
+
+function findNpmPackJsonStart(stdout: string): number {
+  if (stdout.startsWith('[')) {
+    return 0;
+  }
+
+  const jsonStart = stdout.indexOf('\n[');
+
+  if (jsonStart === -1) {
+    throw new Error(
+      'Invalid npm pack output — expected JSON output to start with an array.',
+    );
+  }
+
+  return jsonStart + 1;
 }
 
 function readNpmPackFile(value: unknown): NpmPackFile {
