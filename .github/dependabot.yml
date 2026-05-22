@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+      timezone: Europe/London
+    groups:
+      dev-tooling:
+        dependency-type: development
+        patterns:
+          - '@eslint/*'
+          - '@typescript-eslint/*'
+          - '@vitest/*'
+          - 'eslint'
+          - 'eslint-*'
+          - 'esbuild'
+          - 'globals'
+          - 'prettier'
+          - 'typescript'
+          - 'typescript-eslint'
+          - 'vitest'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:30'
+      timezone: Europe/London

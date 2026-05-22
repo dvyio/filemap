@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  release:
+    types:
+      - published
+  schedule:
+    - cron: '17 7 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency audit
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: 0
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Print npm version
+        run: npm --version
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Check dependencies
+        run: npm run audit:deps
+
+  release-gate:
+    name: Release gate (Node ${{ matrix.node-version }})
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 20
+          - 22
+          - 24
+    env:
+      HUSKY: 0
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Print npm version
+        run: npm --version
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run release gate
+        run: npm run ci
+
+  publish:
+    name: Publish to npm
+    if: github.event_name == 'release' && github.event.action == 'published'
+    needs: release-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      HUSKY: 0
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Use pinned npm
+        run: npm install --global npm@11.12.1
+
+      - name: Print npm version
+        run: npm --version
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Read package version
+        id: package
+        run: node -e "const fs = require('node:fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); console.log('version=' + pkg.version)" >> "$GITHUB_OUTPUT"
+
+      - name: Check npm version
+        id: npm-version
+        run: |
+          if npm view "@dvyio/filemap@${{ steps.package.outputs.version }}" version > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish package
+        if: steps.npm-version.outputs.exists == 'false'
+        run: npm publish --access public
