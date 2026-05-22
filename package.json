@@ -1,6 +1,6 @@
 {
   "name": "@dvyio/filemap",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Print a read-only file map from source overview tags.",
   "keywords": [
     "agents",
