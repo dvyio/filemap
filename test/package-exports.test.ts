@@ -106,6 +106,7 @@ describe('package exports', () => {
     const packResult = parseNpmPackJson(
       [
         'HUSKY=0 skip install',
+        '  ',
         JSON.stringify([
           {
             filename: 'dvyio-filemap-0.1.0.tgz',
@@ -255,7 +256,7 @@ function findNpmPackJsonStart(stdout: string): number {
     return 0;
   }
 
-  const jsonStart = stdout.indexOf('\n[');
+  const jsonStart = stdout.search(/\[\s*\{/u);
 
   if (jsonStart === -1) {
     throw new Error(
@@ -263,7 +264,7 @@ function findNpmPackJsonStart(stdout: string): number {
     );
   }
 
-  return jsonStart + 1;
+  return jsonStart;
 }
 
 function readNpmPackFile(value: unknown): NpmPackFile {
