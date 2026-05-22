@@ -1,13 +1,15 @@
 # Release Process
 
-Use this flow for npm releases. GitHub Actions publishes the package, so npm can attach provenance to the release.
+Use this flow for npm releases. GitHub Actions publishes the package from the GitHub Release, so npm can attach provenance.
+
+Do not run local `npm publish` for normal releases.
 
 ## Before Publishing
 
 1. Check the working tree. Do not publish with unrelated local changes.
-2. Update `CHANGELOG.md`.
-3. Update the package version in `package.json` and `package-lock.json`.
-4. Run the full release gate. This includes the dependency audit:
+2. Move `CHANGELOG.md` items from `Unreleased` into the new version.
+3. Update the version in `package.json` and `package-lock.json`.
+4. Run the full release gate:
 
 ```bash
 npm run ci
@@ -16,30 +18,45 @@ npm run ci
 5. Check the package shape:
 
 ```bash
-npm publish --dry-run
+npm pack --dry-run --json --silent
 ```
+
+6. Check that the version is not already on npm. Replace `<version>` with the version from `package.json`:
+
+```bash
+npm view @dvyio/filemap@<version> version
+```
+
+That command should fail with `E404`. If it returns a version, choose a new version before you continue.
 
 ## Publish
 
-1. Push the version commit to `main`.
-2. Create and push a version tag:
+1. Merge the version commit to `main`.
+2. Create and push a tag for the version in `package.json`:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+version="$(node -p "require('./package.json').version")"
+git tag -a "v$version" -m "v$version"
+git push public "v$version"
 ```
 
-3. Create a GitHub release for that tag.
+3. Create a GitHub Release for that tag.
 4. Wait for the `Publish to npm` job to pass.
 
-If the version already exists on npm, the release job skips `npm publish`. This keeps the first release safe when the package was published manually before trusted publishing was ready.
-
-Do not use local `npm publish` as the normal release path. The package sets `publishConfig.provenance` to `true`, and the GitHub Actions publish job has `id-token: write` so npm can attach provenance to the package.
-
-Before the first release, enable npm trusted publishing for this GitHub repository in the npm package settings. If npm requires the package to exist first, publish the first version with a short-lived token or manual 2FA, then switch to trusted publishing right away.
+If the version already exists on npm, the release job skips `npm publish`. This makes the workflow safe to rerun, but it should not be the normal path for a new release.
 
 ## After Publishing
 
-1. Check the npm package page.
-2. Check that the README install command works.
+1. Check npm metadata:
+
+```bash
+npm view @dvyio/filemap version gitHead repository.url
+```
+
+2. Check the install path:
+
+```bash
+npx -y @dvyio/filemap --version
+```
+
 3. Check that npm shows provenance for the published version.

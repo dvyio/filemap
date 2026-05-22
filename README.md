@@ -10,21 +10,48 @@ npx @dvyio/filemap --strict
 npx @dvyio/filemap src/auth
 ```
 
-filemap is read-only. It prints to stdout, so humans, scripts, and coding agents can inspect a repo or subtree. It does not change repo files.
+filemap prints to stdout, so humans, scripts, and coding agents can inspect a repo or subtree. It does not change repo files.
 
-## Setup
+## What You Get
 
-1. Add an overview tag near the top of each source file.
-2. Run `npx @dvyio/filemap` to print the map.
-3. Run `npx @dvyio/filemap --strict > /dev/null` when you only want to check coverage.
+Add a short overview near the top of a file:
 
-## Compatibility
+```ts
+/** @fileoverview Builds user-facing CLI commands */
+```
 
-filemap supports Node.js 20 and newer. The built CLI avoids JSON import attributes at startup, so `npx @dvyio/filemap --version` works across the full engine range.
+filemap prints that purpose next to the path:
 
-Use Node.js 20.19 or newer when you build this repo or work on filemap locally. Some development tools need that newer Node 20 patch version.
+```txt
+./src/cli.ts — Builds user-facing CLI commands
+```
 
-## Output
+## Use This When
+
+Use filemap when you want a fast, readable map of what files do. It is useful for repo handoffs, agent context, looking around large repos, and checking that important source files explain their purpose.
+
+Do not use filemap as a generated docs store. Run it when you need the map, then use what it prints.
+
+## Pick Your Task
+
+| Task | Command |
+| --- | --- |
+| Print the full map | `npx @dvyio/filemap` |
+| Print one subtree or file | `npx @dvyio/filemap src/auth` |
+| Check overview coverage | `npx @dvyio/filemap --strict > /dev/null` |
+| Include docs pages | `npx @dvyio/filemap --ext md --ext html` |
+| Collapse a noisy directory | `npx @dvyio/filemap --collapse-dir scripts` |
+| Debug a missing file or slow run | `npx @dvyio/filemap --debug` |
+
+## Common Tasks
+
+### Print a map
+
+```bash
+npx @dvyio/filemap
+```
+
+Example output:
 
 ```txt
 ./src/cli.ts — CLI entry point
@@ -32,41 +59,13 @@ Use Node.js 20.19 or newer when you build this repo or work on filemap locally. 
 ./src/pipeline/index.ts — Builds file and directory map entries
 ```
 
-## Source Tags
-
-Add a short overview at the top of source files. `@fileoverview` is the clearest spelling:
-
-```ts
-/** @fileoverview Builds user-facing CLI commands */
-```
-
-Other supported comment styles:
-
-```py
-# @fileoverview Builds user-facing CLI commands
-```
-
-```go
-// @fileoverview Builds user-facing CLI commands
-```
-
-Markdown and HTML files can use HTML comments:
-
-```md
-<!-- @fileoverview Builds user-facing docs -->
-```
-
-filemap also accepts `@file` and `@overview` by default. Use `--tag @custom` when a project should use one custom tag instead.
-
-filemap scans the first 64 KiB of each file for an overview. A tag after that limit is ignored. If a block or HTML overview starts before the limit but does not close before the limit, filemap uses the description text it has already read. In strict mode, that counts as documented.
-
-Markdown and HTML files are not discovered by default. Add them with `--ext`:
+Pass a path when you only need one area:
 
 ```bash
-npx @dvyio/filemap --ext md --ext html
+npx @dvyio/filemap src/auth
 ```
 
-## Strict Checks
+### Check coverage
 
 Use `--strict` when missing overview text should fail the command:
 
@@ -82,8 +81,6 @@ npx @dvyio/filemap --strict > /dev/null
 
 Strict mode fails when a visible file has no overview tag. It also fails when a collapsed directory has no `.overview` file.
 
-## Failure Output
-
 When the CLI fails, stderr starts with a readable message:
 
 ```txt
@@ -92,7 +89,21 @@ filemap: 1 file missing an overview tag (@fileoverview, @file, or @overview):
 
 Use the process exit code in scripts. `0` means success. Any non-zero exit means filemap could not print a complete map.
 
-## Directory Overviews
+### Map docs and HTML files
+
+Markdown and HTML files can use HTML comments:
+
+```md
+<!-- @fileoverview Builds user-facing docs -->
+```
+
+Markdown and HTML files are not discovered by default. Add them with `--ext`:
+
+```bash
+npx @dvyio/filemap --ext md --ext html
+```
+
+### Collapse noisy directories
 
 Sometimes a file map should show one line for a directory instead of listing every file in it. A `.overview` file gives that directory its one-line description.
 
@@ -118,6 +129,38 @@ npx @dvyio/filemap --collapse-dir scripts
 
 The goal is to keep large, low-detail areas readable without losing their purpose.
 
+### Debug missing files or slow runs
+
+Use `--debug` when discovery is slow or a file is missing. The map still prints to stdout. Discovery inputs and the final file count print to stderr.
+
+`--max-files` caps discovered or visible source files before filemap reads overview tags. Raise it for large repos where the default limit is too low. The maximum is 200,000 files.
+
+Before sharing debug output in a public issue, redact private paths, private source names, overview text, and any secret-looking values.
+
+Git ignore checks time out after 5 seconds by default. Set `FILEMAP_GIT_CHECK_IGNORE_TIMEOUT_MS` to a decimal integer from `1` to `60000` milliseconds when a very large repo needs more time. Values outside that range fail the run.
+
+## Source Tags
+
+`@fileoverview` is the clearest spelling:
+
+```ts
+/** @fileoverview Builds user-facing CLI commands */
+```
+
+Other supported comment styles:
+
+```py
+# @fileoverview Builds user-facing CLI commands
+```
+
+```go
+// @fileoverview Builds user-facing CLI commands
+```
+
+filemap also accepts `@file` and `@overview` by default. Use `--tag @custom` when a project should use one custom tag instead.
+
+filemap scans the first 64 KiB of each file. Put the overview near the top.
+
 ## Agent Snippet
 
 Add this small note to agent instructions when you want agents to discover the tool:
@@ -132,9 +175,20 @@ This repo uses filemap for live file-purpose lookup.
 - Run `npx -y @dvyio/filemap --strict > /dev/null` to check coverage.
 ```
 
-## Repeatable Commands
+Use the scoped command when an agent only needs one part of the repo:
 
-Put common commands in package scripts or agent instructions:
+```bash
+npx -y @dvyio/filemap src/discovery
+```
+
+```txt
+./src/discovery/index.ts — Finds visible source files
+./src/discovery/exclusions.ts — Applies default and user exclude rules
+```
+
+This keeps the agent focused on the files it is likely to touch.
+
+For repeatable local use, put common commands in package scripts:
 
 ```json
 {
@@ -149,24 +203,9 @@ Put common commands in package scripts or agent instructions:
 
 `--ext` replaces the default source extension list. By default, filemap discovers `ts`, `tsx`, `mts`, `cts`, `js`, `jsx`, `mjs`, `cjs`, `php`, `py`, `rb`, `go`, `rs`, `java`, `swift`, and `kt`.
 
-Markdown and HTML files are not discovered by default. Add `md`, `mdx`, `html`, or `htm` when you want docs pages to appear in the map.
-
 filemap always excludes `node_modules`, `vendor`, `dist`, `build`, `out`, `.cache`, `.next`, `.nuxt`, `.turbo`, `.agent-batch`, `.git`, and `coverage` directories.
 
-These exclude groups are available:
-
-| Group | Default | Patterns |
-| --- | --- | --- |
-| `tests` | yes | `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`, `**/test/**`, `**/tests/**`, `**/e2e/**`, `**/cypress/**`, `**/playwright/**` |
-| `fixtures` | yes | `**/__fixtures__/**`, `**/__mocks__/**`, `**/__snapshots__/**`, `**/fixtures/**` |
-| `generated` | yes | `**/*.generated.*`, `**/__generated__/**` |
-| `stories` | yes | `**/.storybook/**`, `**/stories/**`, `**/*.stories.*` |
-| `locks` | yes | `**/package-lock.json`, `**/pnpm-lock.yaml`, `**/yarn.lock`, `**/bun.lock`, `**/bun.lockb`, `**/composer.lock`, `**/Gemfile.lock`, `**/Cargo.lock`, `**/go.sum`, `**/poetry.lock`, `**/Pipfile.lock` |
-| `types` | yes | `**/*.d.ts` |
-| `config` | no | `**/*.config.*` |
-| `migrations` | no | `**/migrations/**` |
-
-Disable the default-on groups with `--no-default-excludes`.
+filemap has exclude groups for tests, fixtures, generated files, stories, lock files, types, config files, and migrations. Run `npx @dvyio/filemap --help` for the exact patterns. Disable the default-on groups with `--no-default-excludes`.
 
 ## Include and Exclude Rules
 
@@ -176,13 +215,11 @@ Include flags rescue files from soft excludes only when those files are already 
 
 Files matched by `.gitignore` are also excluded.
 
-## Large Repos and Debugging
+## Compatibility
 
-`--max-files` caps discovered or visible source files before filemap reads overview tags. Raise it for large repos where the default limit is too low. The maximum is 200,000 files.
+filemap supports Node.js 20 and newer.
 
-Use `--debug` when discovery is slow or a file is missing. The map still prints to stdout. Discovery inputs and the final file count print to stderr. Before sharing debug output in a public issue, redact private paths, private source names, overview text, and any secret-looking values.
-
-Git ignore checks time out after 5 seconds by default. Set `FILEMAP_GIT_CHECK_IGNORE_TIMEOUT_MS` to a decimal integer from `1` to `60000` milliseconds when a very large repo needs more time. Values outside that range fail the run.
+Use Node.js 20.19 or newer when you build this repo or work on filemap locally. Some development tools need that newer Node 20 patch version.
 
 ## Maintainer Docs
 
