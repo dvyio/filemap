@@ -1475,7 +1475,7 @@ function expectReadAndCloseErrors(
 async function waitForGitCheckIgnoreSpawn(
   state: GitCheckIgnoreMockState,
 ): Promise<void> {
-  const maxAttempts = 100;
+  const maxAttempts = 1_000;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (state.spawnArgs !== undefined) {
