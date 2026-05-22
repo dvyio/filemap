@@ -95,7 +95,7 @@
   "devDependencies": {
     "@dvyio/prettier-plugin-collapse-markdown-tables": "^0.2.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^20.19.41",
+    "@types/node": "^25.9.1",
     "@typescript-eslint/parser": "^8.59.3",
     "@typescript-eslint/types": "^8.59.3",
     "@vitest/coverage-v8": "^4.1.6",
