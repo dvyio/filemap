@@ -1,0 +1,18 @@
+# Local agent/tool state
+.DS_Store
+.agent-batch/
+coverage/
+dist/
+node_modules/
+*.tsbuildinfo
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Root-level audit scratch notes
+AUDIT_*.md
+
+# Husky internals
+/.husky/_
