@@ -60,6 +60,8 @@ interface GitListFilesOutputParser {
   readonly finish: () => readonly RepoPath[];
 }
 
+type GitListFilesTag = '?' | 'H' | 'M' | 'R' | 'S';
+
 type GitCheckIgnoreChildProcess = ChildProcessWithoutNullStreams;
 type GitCommandChildProcess = ChildProcessByStdio<null, Readable, Readable>;
 type GitProcessName = 'git check-ignore' | 'git ls-files';
@@ -389,7 +391,15 @@ async function runGitListFilesProcess(
 ): Promise<GitVisibleFilesResult> {
   return runGitCommand({
     acceptedExitCodes: [0],
-    args: ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    args: [
+      'ls-files',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '--deleted',
+      '-t',
+      '-z',
+    ],
     getAcceptedResult(filePaths): GitVisibleFilesResult {
       return {
         filePaths,
@@ -679,14 +689,23 @@ function getGitCommandCloseResult<TOutput, TResult>(
 
 function createGitListFilesOutputParser(): GitListFilesOutputParser {
   const filePaths = new Set<RepoPath>();
+  const deletedFilePaths = new Set<RepoPath>();
   let pendingOutput = '';
 
-  function addPath(rawPath: string): void {
-    if (rawPath === '') {
+  function addTaggedPath(taggedPath: string): void {
+    if (taggedPath === '') {
       return;
     }
 
-    filePaths.add(toDiscoveredRepoPath(rawPath, 'Git path'));
+    const tag = parseGitListFilesTag(taggedPath);
+    const filePath = toDiscoveredRepoPath(taggedPath.slice(2), 'Git path');
+
+    if (tag === 'R') {
+      deletedFilePaths.add(filePath);
+      return;
+    }
+
+    filePaths.add(filePath);
   }
 
   return {
@@ -696,7 +715,7 @@ function createGitListFilesOutputParser(): GitListFilesOutputParser {
       pendingOutput = parts.pop() ?? '';
 
       for (const part of parts) {
-        addPath(part);
+        addTaggedPath(part);
       }
     },
     finish(): readonly RepoPath[] {
@@ -706,9 +725,29 @@ function createGitListFilesOutputParser(): GitListFilesOutputParser {
         );
       }
 
-      return [...filePaths];
+      return [...filePaths].filter(
+        (filePath) => !deletedFilePaths.has(filePath),
+      );
     },
   };
+}
+
+function parseGitListFilesTag(taggedPath: string): GitListFilesTag {
+  if (taggedPath.length < 3 || taggedPath[1] !== ' ') {
+    throw new Error(
+      `Git returned malformed tagged path "${formatDisplayValue(taggedPath)}", expected a status letter, a space, and a repo path.`,
+    );
+  }
+
+  const tag = taggedPath.charAt(0);
+
+  if (tag === '?' || tag === 'H' || tag === 'M' || tag === 'R' || tag === 'S') {
+    return tag;
+  }
+
+  throw new Error(
+    `Git returned unknown file status "${formatDisplayValue(tag)}" for path "${formatDisplayValue(taggedPath.slice(2))}", expected one of "?", "H", "M", "R", or "S".`,
+  );
 }
 
 function getGitCheckIgnoreTimeoutMs(): number {
@@ -836,8 +875,16 @@ function toGitCheckIgnoreError(
 }
 
 function toGitListFilesError(error: unknown, workingDirectory: CwdPath): Error {
+  let detail: string;
+
+  if (error instanceof Error) {
+    detail = formatDisplayValue(error.message);
+  } else {
+    detail = formatDisplayValue(String(error));
+  }
+
   return new Error(
-    `Failed to read git ls-files output in cwd "${formatDisplayValue(workingDirectory)}" — expected Git stdout to contain only repo paths.`,
+    `Failed to read git ls-files output in cwd "${formatDisplayValue(workingDirectory)}" — ${detail}`,
     { cause: error },
   );
 }

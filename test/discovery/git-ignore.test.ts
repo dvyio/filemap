@@ -15,6 +15,7 @@ import {
   createOverviewFixture,
   getThrownError,
   initializeGitRepository,
+  runSyncCommand,
   withMockedFsPromises,
   withWorkspace,
 } from '../helpers.js';
@@ -36,6 +37,7 @@ interface GitCheckIgnoreMockState {
   stderr: string;
   stderrChunks: readonly string[] | undefined;
   stdoutChunk: string | symbol;
+  stdoutChunks: readonly string[] | undefined;
 }
 
 function createGitCheckIgnoreMockState(
@@ -49,6 +51,7 @@ function createGitCheckIgnoreMockState(
     stderr: '',
     stderrChunks: undefined,
     stdoutChunk: '',
+    stdoutChunks: undefined,
     ...overrides,
   };
 }
@@ -191,6 +194,162 @@ describe('git check-ignore output parser', () => {
 });
 
 describe('discoverFiles git ignore filtering', () => {
+  test('given a tracked file is deleted without staging, when discovering, then the deleted file is skipped', async () => {
+    await withWorkspace('filemap-discover-', async (cwd) => {
+      initializeGitRepository(cwd);
+      await createFixture(cwd, 'src/deleted file-雪.ts');
+      await createFixture(cwd, 'src/visible.ts');
+      const addResult = runSyncCommand('git', ['add', '.'], { cwd });
+
+      expect(addResult.status).toBe(0);
+
+      await rm(join(cwd, 'src/deleted file-雪.ts'));
+
+      await expect(discoverFiles({ cwd })).resolves.toEqual(['src/visible.ts']);
+    });
+  });
+
+  test('given a tracked file deletion is staged, when discovering, then the deleted file is skipped', async () => {
+    await withWorkspace('filemap-discover-', async (cwd) => {
+      initializeGitRepository(cwd);
+      await createFixture(cwd, 'src/deleted.ts');
+      await createFixture(cwd, 'src/visible.ts');
+      const firstAddResult = runSyncCommand('git', ['add', '.'], { cwd });
+
+      expect(firstAddResult.status).toBe(0);
+
+      await rm(join(cwd, 'src/deleted.ts'));
+      const secondAddResult = runSyncCommand('git', ['add', '--update'], {
+        cwd,
+      });
+
+      expect(secondAddResult.status).toBe(0);
+      await expect(discoverFiles({ cwd })).resolves.toEqual(['src/visible.ts']);
+    });
+  });
+
+  test('given deleted tracked files exceed maxFiles, when discovering, then deleted files do not count', async () => {
+    await withWorkspace('filemap-discover-', async (cwd) => {
+      initializeGitRepository(cwd);
+      await createFixture(cwd, 'src/deleted-a.ts');
+      await createFixture(cwd, 'src/deleted-b.ts');
+      await createFixture(cwd, 'src/visible.ts');
+      const addResult = runSyncCommand('git', ['add', '.'], { cwd });
+
+      expect(addResult.status).toBe(0);
+
+      await rm(join(cwd, 'src/deleted-a.ts'));
+      await rm(join(cwd, 'src/deleted-b.ts'));
+
+      await expect(
+        discoverFiles({ cwd, maxFiles: validateMaxFiles(1) }),
+      ).resolves.toEqual(['src/visible.ts']);
+    });
+  });
+
+  test('given tagged Git paths, when discovering, then tracked, unmerged, sparse, and untracked files are kept while deleted files are skipped', async () => {
+    const gitCheckIgnoreState = mockGitCheckIgnoreProcess({
+      exitCode: 0,
+      stdoutChunks: [
+        'H src/dele',
+        'ted.ts\0R src/deleted.ts\0H src/tracked.ts\0',
+        'M src/unmerged.ts\0S src/sparse.ts\0? src/untracked.ts\0',
+      ],
+    });
+    const { findGitVisibleFiles } = await import('@/git/ignore.js');
+
+    try {
+      await withWorkspace('filemap-discover-', async (cwd) => {
+        initializeGitRepository(cwd);
+
+        await expect(
+          findGitVisibleFiles(resolveWorkingDirectory(cwd)),
+        ).resolves.toEqual({
+          filePaths: [
+            'src/tracked.ts',
+            'src/unmerged.ts',
+            'src/sparse.ts',
+            'src/untracked.ts',
+          ],
+          status: 'answered',
+        });
+        expectGitLsFilesSpawn(gitCheckIgnoreState, cwd);
+      });
+    } finally {
+      await restoreGitCheckIgnoreProcess();
+    }
+  });
+
+  test('given a sparse checkout, when discovering, then sparse tracked files are not treated as deleted', async () => {
+    await withWorkspace('filemap-discover-', async (cwd) => {
+      initializeGitRepository(cwd);
+      await createFixture(cwd, 'docs/sparse.ts');
+      await createFixture(cwd, 'src/visible.ts');
+
+      const commands = [
+        ['config', 'user.email', 'filemap@example.com'],
+        ['config', 'user.name', 'Filemap Tests'],
+        ['add', '.'],
+        ['commit', '--message', 'Add sparse checkout fixtures'],
+        ['sparse-checkout', 'init', '--cone'],
+        ['sparse-checkout', 'set', 'src'],
+      ] as const;
+
+      for (const args of commands) {
+        const result = runSyncCommand('git', args, { cwd });
+
+        expect(result.status, result.stderr).toBe(0);
+      }
+
+      await expect(discoverFiles({ cwd })).resolves.toEqual([
+        'docs/sparse.ts',
+        'src/visible.ts',
+      ]);
+    });
+  });
+
+  test('given Git returns an unknown file status, when discovering, then it fails clearly', async () => {
+    mockGitCheckIgnoreProcess({
+      exitCode: 0,
+      stdoutChunk: 'X src/app.ts\0',
+    });
+    const { findGitVisibleFiles } = await import('@/git/ignore.js');
+
+    try {
+      await withWorkspace('filemap-discover-', async (cwd) => {
+        initializeGitRepository(cwd);
+
+        await expect(
+          findGitVisibleFiles(resolveWorkingDirectory(cwd)),
+        ).rejects.toThrow(
+          'Git returned unknown file status "X" for path "src/app.ts"',
+        );
+      });
+    } finally {
+      await restoreGitCheckIgnoreProcess();
+    }
+  });
+
+  test('given Git returns a malformed tagged path, when discovering, then it fails clearly', async () => {
+    mockGitCheckIgnoreProcess({
+      exitCode: 0,
+      stdoutChunk: 'Hsrc/app.ts\0',
+    });
+    const { findGitVisibleFiles } = await import('@/git/ignore.js');
+
+    try {
+      await withWorkspace('filemap-discover-', async (cwd) => {
+        initializeGitRepository(cwd);
+
+        await expect(
+          findGitVisibleFiles(resolveWorkingDirectory(cwd)),
+        ).rejects.toThrow('Git returned malformed tagged path "Hsrc/app.ts"');
+      });
+    } finally {
+      await restoreGitCheckIgnoreProcess();
+    }
+  });
+
   test('given a workspace without Git metadata, when discovering, then Git is not spawned', async () => {
     const gitCheckIgnoreState = mockGitCheckIgnoreProcess({
       exitCode: 1,
@@ -1345,8 +1504,12 @@ function mockGitCheckIgnoreProcess(
             state.mode !== 'timeoutHangs'
           ) {
             queueMicrotask(() => {
-              if (state.stdoutChunk !== '') {
-                child.stdout.emit('data', state.stdoutChunk);
+              for (const stdoutChunk of state.stdoutChunks ?? [
+                state.stdoutChunk,
+              ]) {
+                if (stdoutChunk !== '') {
+                  child.stdout.emit('data', stdoutChunk);
+                }
               }
               for (const stderrChunk of state.stderrChunks ?? [state.stderr]) {
                 child.stderr.emit('data', stderrChunk);
@@ -1415,7 +1578,7 @@ function assertMockedGitSpawn(command: string, args: readonly string[]): void {
 
 function isMockedGitLsFilesSpawn(args: readonly string[]): boolean {
   return (
-    args.length === 7 &&
+    args.length === 9 &&
     args[0] === '-C' &&
     args[1] !== undefined &&
     args[1] !== '' &&
@@ -1423,7 +1586,9 @@ function isMockedGitLsFilesSpawn(args: readonly string[]): boolean {
     args[3] === '--cached' &&
     args[4] === '--others' &&
     args[5] === '--exclude-standard' &&
-    args[6] === '-z'
+    args[6] === '--deleted' &&
+    args[7] === '-t' &&
+    args[8] === '-z'
   );
 }
 
@@ -1500,6 +1665,8 @@ function expectGitLsFilesSpawn(
     '--cached',
     '--others',
     '--exclude-standard',
+    '--deleted',
+    '-t',
     '-z',
   ]);
 }
